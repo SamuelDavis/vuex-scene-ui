@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Vuex Scene Renderer</title>
+</head>
+
+<body>
+    <div id="app"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/1.18.0/TweenLite.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+    <script src="https://unpkg.com/vuex"></script>
+    <script id="app-template" type="text/x-template">
+        <scene v-bind:text="text" v-bind:options="options"/>
+    </script>
+    <script id="scene-template" type="text/x-template">
+        <div>
+            <text-scrawl v-bind:text="text" v-bind:done="() => renderOptions = true"/>
+            <ol v-if="renderOptions">
+                <li v-for="{label, cb} in options">
+                    <button @click="cb" v-text="label"></button>
+                </li>
+            </ol>
+        </div>
+    </script>
+    <script id="text-scrawl-template" type="text/x-template">
+        <span class="text-scrawl" v-text="this.text.slice(0, this.renderIndex)"></span>
+    </script>
+    <script type="application/javascript">
+        Vue.component("scene", {
+            template: "#scene-template",
+            props: ["text", "options"],
+            data() {
+                return {
+                    renderOptions: false
+                }
+            },
+            watch: {
+                text() {
+                    this.renderOptions = false
+                }
+            },
+        })
+        Vue.component("text-scrawl", {
+            template: "#text-scrawl-template",
+            props: ["text", "done"],
+            data() {
+                return {
+                    renderIndex: 1,
+                    animation: undefined
+                }
+            },
+            mounted: function () {
+                this.animate()
+            },
+            watch: {
+                text() {
+                    this.renderIndex = 1
+                    this.animate()
+                }
+            },
+            methods: {
+                animate() {
+                    if (this.animation) this.animation.kill()
+                    const duration = 0.03 * this.text.length
+                    const target = {
+                        renderIndex: this.text.length,
+                        onComplete: this.done || function () { },
+                        ease: Power0.easeNone
+                    }
+                    this.animation = TweenLite.to(this.$data, duration, target)
+                }
+            }
+        })
+        document.addEventListener("DOMContentLoaded", (() => {
+            class App extends Vue {
+                constructor(store) {
+                    super({
+                        el: "#app",
+                        template: "#app-template",
+                        store,
+                        computed: Vuex.mapState(["text", "options"]),
+                        mounted() {
+                            document.addEventListener("keydown", this.keyHandler)
+                        },
+                        methods: {
+                            keyHandler({ key }) {
+                                let optIndex = parseInt(key, 10)
+                                if (!isNaN(optIndex)) optIndex--
+                                if (optIndex in this.options)
+                                    this.options[optIndex].cb()
+                            }
+                        }
+                    })
+                }
+            }
+            class Scene {
+                constructor(text = "", options = []) {
+                    this.text = text
+                    this.options = options
+                }
+            }
+            class SceneOption {
+                constructor(label = "", cb = () => { }) {
+                    this.label = label
+                    this.cb = cb
+                }
+            }
+            const STATE = {
+                state: {
+                    ...new Scene()
+                },
+                mutations: {
+                    SET_SCENE(state, scene) {
+                        for (let prop in scene) {
+                            if (scene.hasOwnProperty(prop))
+                                state[prop] = scene[prop]
+                        }
+                    }
+                }
+            }
+
+            const store = new Vuex.Store(STATE)
+            const scenes = ["Scene A", "Scene B", "Scene C"]
+                .map((text) => new Scene(text))
+                .map((scene, i, scenes) => {
+                    scene.options = scenes
+                        .slice(i + 1).concat(scenes.slice(0, i))
+                        .map((scene) => new SceneOption(scene.text, () => {
+                            store.commit(STATE.mutations.SET_SCENE.name, scene)
+                        }))
+                    return scene
+                })
+            store.commit(STATE.mutations.SET_SCENE.name, scenes[0])
+            new App(store)
+        })())
+    </script>
+</body>
+
+</html>
